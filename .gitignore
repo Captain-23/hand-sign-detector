@@ -1,0 +1,44 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Virtual Environment
+handsign_arm/
+venv/
+env/
+.venv/
+
+# =========================
+# IDE (IntelliJ / PyCharm)
+# =========================
+.idea/
+*.iml
+
+# VSCode (if you ever use it)
+.vscode/
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Model & Data (optional)
+# =========================
+# Uncomment if DATA is large
+# DATA/
+
+# Uncomment if you don’t want to push trained models
+# MODEL/keras_model.h5
+
+# =========================
+# Temporary Files
+# =========================
+*.swp
+*.tmp
