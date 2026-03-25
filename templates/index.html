@@ -252,6 +252,7 @@
         let recognition = null;
         let speechTranscript = "";
         let lastDetectedChar = "";
+        let micStream = null;  // Keep mic stream alive while recording
 
         // ========== FPS Counter ==========
         const videoImg = document.getElementById("handSignFeed");
@@ -353,16 +354,17 @@
                 return;
             }
 
-            // Request microphone permission explicitly first
+            // Request microphone permission and keep the stream alive
             navigator.mediaDevices.getUserMedia({ audio: true })
                 .then(stream => {
-                    // Got mic access! Stop the test stream — SpeechRecognition will use its own
-                    stream.getTracks().forEach(track => track.stop());
+                    // Keep the stream alive — stopping it can kill mic access for SpeechRecognition
+                    micStream = stream;
 
                     recognition = new SpeechRecognition();
                     recognition.continuous = true;
                     recognition.interimResults = true;
                     recognition.lang = "en-US";
+                    recognition.maxAlternatives = 1;
 
                     recognition.onstart = () => {
                         console.log("🎙️ Speech recognition started");
@@ -387,10 +389,13 @@
                             }
                         }
 
-                        speechTranscript = finalText;
+                        if (finalText) {
+                            speechTranscript += finalText;
+                        }
                         const outputEl = document.getElementById("speechOutput");
-                        if (finalText || interimText) {
-                            outputEl.innerHTML = `<span class="text-white">${finalText}</span><span class="transcript-interim">${interimText}</span>`;
+                        const displayFinal = speechTranscript.trim();
+                        if (displayFinal || interimText) {
+                            outputEl.innerHTML = `<span class="text-white">${displayFinal} </span><span class="transcript-interim">${interimText}</span>`;
                         } else {
                             outputEl.innerHTML = '<span class="text-gray-600 italic text-base font-normal">🎙️ Listening...</span>';
                         }
@@ -402,22 +407,30 @@
                             alert("Microphone access denied. Please allow microphone access in your browser settings.");
                             stopMic();
                         } else if (event.error === "no-speech") {
-                            // No speech detected — this is normal, just keep listening
-                            console.log("No speech detected, continuing to listen...");
+                            // Normal — no speech detected, recognition will auto-end and restart
+                            console.log("No speech detected, will restart...");
                         } else if (event.error === "network") {
                             const outputEl = document.getElementById("speechOutput");
                             outputEl.innerHTML = '<span class="text-yellow-400 italic text-base font-normal">⚠️ Network error — check internet connection</span>';
+                        } else if (event.error === "aborted") {
+                            console.log("Recognition aborted, will restart if mic is on...");
                         }
                     };
 
                     recognition.onend = () => {
+                        console.log("Speech recognition ended, micOn:", micOn);
                         // Auto-restart if mic is still supposed to be on
-                        if (micOn && recognition) {
-                            try {
-                                recognition.start();
-                            } catch (e) {
-                                console.warn("Could not restart recognition:", e);
-                            }
+                        if (micOn) {
+                            setTimeout(() => {
+                                if (micOn && recognition) {
+                                    try {
+                                        recognition.start();
+                                        console.log("🔄 Restarted speech recognition");
+                                    } catch (e) {
+                                        console.warn("Could not restart recognition:", e);
+                                    }
+                                }
+                            }, 300);  // Small delay to avoid race condition
                         }
                     };
 
@@ -437,8 +450,8 @@
         }
 
         function stopMic() {
+            micOn = false;
             if (recognition) {
-                micOn = false;
                 try {
                     recognition.stop();
                 } catch (e) {
@@ -446,7 +459,11 @@
                 }
                 recognition = null;
             }
-            micOn = false;
+            // Stop the microphone stream
+            if (micStream) {
+                micStream.getTracks().forEach(track => track.stop());
+                micStream = null;
+            }
             updateMicUI();
             const outputEl = document.getElementById("speechOutput");
             if (!speechTranscript.trim()) {

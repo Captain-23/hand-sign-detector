@@ -23,11 +23,17 @@ classifier = Classifier("Model/keras_model.h5", "Model/labels.txt")
 with open("Model/labels.txt", "r") as f:
     labels = [line.strip().split(" ", 1)[1] for line in f.readlines() if line.strip()]
 
+# Only accept predictions for classes that actually exist in the DATA folder
+valid_labels = set()
+data_dir = os.path.join(os.path.dirname(__file__), "DATA")
+if os.path.isdir(data_dir):
+    valid_labels = {d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))}
+
 offset = 20
 imgSize = 300
 
 # Prediction buffer for stable detection (ported from run_app.py)
-pred_buffer = deque(maxlen=10)
+pred_buffer = deque(maxlen=15)
 
 state = {
     "sentence": "",
@@ -125,11 +131,12 @@ def gen_frames():
                     state["current_confidence"] = round(float(confidence), 3)
 
                     valid_char = True
-                    if confidence < 0.50:
+                    if confidence < 0.65:
                         valid_char = False
                     else:
                         char = labels[index]
-                        if not char.isalpha():
+                        # Only accept chars that exist in the dataset
+                        if valid_labels and char not in valid_labels:
                             valid_char = False
 
                     if valid_char:
@@ -137,50 +144,21 @@ def gen_frames():
                         most_common = max(set(pred_buffer), key=pred_buffer.count)
 
                         # Update current detected char for the frontend
-                        if pred_buffer.count(most_common) >= 5:
+                        if pred_buffer.count(most_common) >= 7:
                             state["current_char"] = most_common
 
                         # Add to sentence when stable and different from last
-                        if pred_buffer.count(most_common) >= 5 and most_common != state["last_char"]:
+                        if pred_buffer.count(most_common) >= 7 and most_common != state["last_char"]:
                             state["sentence"] += most_common
                             state["last_char"] = most_common
                             pred_buffer.clear()
 
-                        # Draw the stable detected character on the frame
-                        display_char = most_common if pred_buffer.count(most_common) >= 5 else ""
-                        if display_char:
-                            cv2.putText(
-                                imgOutput, display_char,
-                                (x1, y1 - 10),
-                                cv2.FONT_HERSHEY_COMPLEX,
-                                1.2, (0, 255, 0), 3
-                            )
-
-                    # Draw confidence
-                    cv2.putText(
-                        imgOutput,
-                        f"conf={confidence:.2f}",
-                        (x1, y1 - 40),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.7, (0, 255, 255), 2
-                    )
-
-                    # Draw bounding box
+                    # Draw bounding box outline around detected hand
                     cv2.rectangle(
                         imgOutput,
                         (x1, y1), (x2, y2),
-                        (70, 252, 255), 4
+                        (70, 252, 255), 3
                     )
-
-            # Draw sentence bar at bottom
-            cv2.rectangle(imgOutput, (10, 430), (630, 480), (0, 0, 0), -1)
-            cv2.putText(
-                imgOutput,
-                state["sentence"][-30:] if len(state["sentence"]) > 30 else state["sentence"],
-                (20, 465),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1, (255, 255, 255), 2
-            )
 
             ret, buffer = cv2.imencode('.jpg', imgOutput)
             frame = buffer.tobytes()
